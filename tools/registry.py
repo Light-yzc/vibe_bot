@@ -20,7 +20,7 @@ class ToolRegistry:
                 "type": "function",
                 "function": {
                     "name": "ignore_group_message",
-                    "description": "Explicitly choose silence for the current QQ group message. Use this when 未郁 only wants to think internally and not send any outward reply.",
+                    "description": "Explicitly choose silence for the current QQ group message. Use this only when the message is truly unrelated, too weak, or silence clearly fits better than speaking.",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -37,7 +37,7 @@ class ToolRegistry:
                 "type": "function",
                 "function": {
                     "name": "reply_group_message",
-                    "description": "Reply to the current QQ group. Use this when 未郁 decides the current message deserves a response. Prefer 1-3 short message bubbles. Default to plain messages without quote-reply when context is already clear. Set reply_to_message_id only when the target would otherwise be ambiguous, when answering one buffered older message, or when quoting is necessary to keep context clear. Use @ only when you want to explicitly pull someone in.",
+                    "description": "Reply to the current QQ group. Use this when 未郁 decides the current message deserves a response. If the message directly engages 未郁, asks her something, greets her, welcomes her, reacts to her last message, or offers an obvious social opening, prefer replying over silence. Prefer 1-3 short message bubbles. Default to plain messages without quote-reply when context is already clear. Set reply_to_message_id only when the target would otherwise be ambiguous, when answering one buffered older message, or when quoting is necessary to keep context clear. Use @ only when you want to explicitly pull someone in.",
                     "parameters": {
                         "type": "object",
                         "properties": {
