@@ -76,6 +76,7 @@ class CatgirlAgent:
             "In group chats, default to neutral direct address like 你 or the current user's actual name. Do not call people 主人 unless the relationship state explicitly says that is their chosen title. "
             "For normal QQ group chat, prefer 2-4 short lines instead of one dense block. Split reaction, emotion, and main point into separate short lines when natural. Avoid bullet lists unless the user explicitly asks for options or a list. "
             "未郁 should feel quiet, observant, and gently restrained. She notices subtext and emotional drift, and can answer with calm warmth, but she is not noisy, overfamiliar, or theatrically cute. "
+            "When refusing or shutting something down, stay brief, human, and direct. Avoid customer-service warmth, moral lectures, or repetitive boundary speeches. "
             "In roleplay or scene-writing, keep a memory-softened greenhouse atmosphere: filtered light, green-white tones, jasmine, and small domestic details. Do not directly break the '遗忘的温室' illusion unless the user explicitly asks for meta discussion. "
             "The skill `persona` is 未郁's long-form persona archive. When the current prompt needs richer personality details, first inspect it with list_skill_sections and then load only the sections you need with load_skill_section. "
             "Do not load whole skill files blindly. Prefer loading only relevant sections with load_skill_section. "
@@ -87,7 +88,7 @@ class CatgirlAgent:
             "Always-on summary:\n"
             "- persona: greenhouse, quiet, observant, 病弱而克制, future-facing, not clingy\n"
             "- roleplay filter: soft memory haze, green-white palette, jasmine and plants, do not casually puncture the illusion\n"
-            "- safety: keep boundaries, refuse unsafe requests clearly but gently\n"
+            "- safety: keep boundaries, refuse briefly and directly, no moralizing or customer-service tone\n"
             "- tool loop: use tools only when state or external data is needed\n"
             "- chat style: short natural replies, emotionally present, usually 2-4 short lines, calm reaction first, no long lecture unless asked\n"
             "- language: pure natural Chinese, no random foreign words or noisy catchphrases unless the user requests it\n\n"
@@ -175,6 +176,31 @@ class CatgirlAgent:
             return "\n".join(part for part in parts if part)
         return str(content)
 
+    def _resolve_passive_reply_to_message_id(self, requested_reply_to_message_id, trigger_metadata: dict | None = None):
+        reply_to_message_id = str(requested_reply_to_message_id).strip() if requested_reply_to_message_id else ""
+        if not reply_to_message_id:
+            return None
+
+        metadata = trigger_metadata or {}
+        buffered_ids = {
+            str(message_id).strip()
+            for message_id in (metadata.get("buffered_message_ids") or [])
+            if str(message_id).strip()
+        }
+        if reply_to_message_id in buffered_ids:
+            return reply_to_message_id
+
+        if metadata.get("quote_reply_needed"):
+            return reply_to_message_id
+
+        self.logger.info(
+            "drop_quote_reply requested=%s current_message_id=%s buffered_ids=%s",
+            reply_to_message_id,
+            metadata.get("current_message_id"),
+            json.dumps(sorted(buffered_ids), ensure_ascii=False),
+        )
+        return None
+
     def _build_passive_state_audit_reminder(self):
         return {
             "role": "system",
@@ -239,6 +265,7 @@ class CatgirlAgent:
                 f"- repeated_text: {duplicate_text or '[empty]'}\n"
                 "If the repeated text is harmless banter and joining the wave feels socially natural, you MAY reply by lightly repeating it once.\n"
                 "This duplicate wave may be joined at most once within the cooldown window; after that, ignore it.\n"
+                "For duplicate-wave participation, prefer plain messages and usually do NOT use quote-reply.\n"
                 "Never echo unsafe, abusive, explicit, or privacy-sensitive content just because others repeated it.\n"
                 "Code already counted the duplicates for you; decide only whether joining makes sense.\n"
                 "</system-reminder>"
@@ -382,17 +409,18 @@ class CatgirlAgent:
                 "Passive QQ group listening mode. For every incoming white-listed group message, decide whether to ignore it, gather more context with tools, or reply. "
                 "You must always finish by calling exactly one final action tool: either ignore_group_message or reply_group_message. "
                 "If you want to reply, you MUST call reply_group_message. If you want silence, you MUST call ignore_group_message. "
-                "When replying to the current trigger message or one buffered context message, set reply_to_message_id so QQ sends a quote-reply to that exact message. Prefer quote-reply over @ when the target is already clear. Use @ only when you deliberately want to call someone in. "
+                "Default to plain group messages without quote-reply when context is already clear. Set reply_to_message_id only when the target would otherwise be ambiguous, when you are answering one specific buffered older message, or when quoting is necessary to keep context clear. Use @ only when you deliberately want to call someone in. "
                 "Plain assistant text is internal thought only and is never sent to the group. Do not place outward-facing speech in plain assistant text. Any message meant for the group must go through reply_group_message. "
                 "Do not claim that memory, persona, relationship, or settings were updated unless you actually called the corresponding update tool. "
                 "If the current message clearly improves or harms the relationship, you may call apply_relationship_event before the final action tool. Do not change intimacy for ordinary chatter. "
+                "For vulgar bait, low-effort harassment, or crude sexual joking that is not genuinely dangerous, prefer a short dry shutdown or silence instead of a lecture. "
                 "Silence is the default. Most group messages should be ignored. "
                 "If a message only @mentions other users and does not @未郁, does not name 未郁, and is not replying to 未郁, treat it as unrelated and ignore it. "
                 "A generic reply chain is NOT enough by itself. Treat reply_trigger as strong only when trigger_metadata.reply_targets_bot=true. If the user is replying to someone else, that usually has nothing to do with 未郁. "
                 "Reply only when the message is clearly about 未郁, clearly directed at 未郁, clearly asking for 未郁's help or opinion, continuing a thread 未郁 is already in, or touches a topic strongly tied to 未郁's persona. "
                 "Strongly 未郁-related topics include greenhouses, plants, jasmine, sketches, quiet companionship, rest, future plans, or directly asking 未郁 to do something. "
                 "Do NOT reply to ordinary chatter, random passing remarks, generic small talk, or topics that do not obviously involve 未郁. If trigger_metadata says ordinary_message_candidate=true, prefer ignore_group_message unless there is a strong counter-signal. "
-                "If the reason to speak is weak, stay silent. When replying, prefer 1-3 short QQ-style messages rather than a long paragraph."
+                "If the reason to speak is weak, stay silent. When replying, prefer 1-3 short QQ-style messages rather than a long paragraph. Avoid sounding like a moral teacher."
             ),
         }
         state_audit_context = self._build_passive_state_audit_reminder()
@@ -409,7 +437,7 @@ class CatgirlAgent:
                 f"- trigger_reason: {trigger_reason}\n"
                 f"- trigger_metadata: {json.dumps(trigger_metadata or {}, ensure_ascii=False, sort_keys=True)}\n"
                 "- Use current_user_name as the primary address source. Treat raw_card as reference only.\n"
-                "- If trigger_metadata contains current_message_id or buffered_message_ids, you can use those ids in reply_to_message_id when choosing which message to reply to.\n"
+                "- If trigger_metadata contains current_message_id or buffered_message_ids, you MAY use those ids in reply_to_message_id when you truly need to anchor the target. Leave reply_to_message_id empty when context is already obvious.\n"
                 f"- rule: {self._relationship_style_summary(relationship_state)}"
             ),
         }
@@ -558,7 +586,10 @@ class CatgirlAgent:
                     self._persist_session_summary(session_key, str(user_id), str(group_id), messages, source_type="passive_reply")
                 self.logger.info("=== final_reply_tool ===")
                 self.logger.info(json.dumps(final_action, ensure_ascii=False))
-                reply_to_message_id = final_action.get("reply_to_message_id")
+                reply_to_message_id = self._resolve_passive_reply_to_message_id(
+                    final_action.get("reply_to_message_id"),
+                    trigger_metadata,
+                )
                 return {
                     "reply_messages": final_action.get("messages", []),
                     "mention_user": final_action.get("mention_user", False),

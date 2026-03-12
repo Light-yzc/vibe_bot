@@ -34,7 +34,7 @@ def validate_runtime(require_qq: bool = False) -> None:
 
 API_URL = os.getenv("ARK_API_URL", "https://ark.cn-beijing.volces.com/api/coding/v3/chat/completions")
 API_KEY = _env_str("ARK_API_KEY")
-MODEL = _env_str("ARK_MODEL", "doubao-seed-2.0-pro")
+MODEL = "minimax-m2.5"
 DEBUG = _env_flag("CATGIRL_DEBUG", True)
 DEFAULT_USER_ID = _env_str("CATGIRL_USER_ID", "local-user")
 DEFAULT_USER_NAME = _env_str("CATGIRL_USER_NAME", "对方")
