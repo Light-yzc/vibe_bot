@@ -558,7 +558,7 @@ class CatgirlAgent:
                     self._persist_session_summary(session_key, str(user_id), str(group_id), messages, source_type="passive_reply")
                 self.logger.info("=== final_reply_tool ===")
                 self.logger.info(json.dumps(final_action, ensure_ascii=False))
-                reply_to_message_id = final_action.get("reply_to_message_id") or (trigger_metadata or {}).get("current_message_id")
+                reply_to_message_id = final_action.get("reply_to_message_id")
                 return {
                     "reply_messages": final_action.get("messages", []),
                     "mention_user": final_action.get("mention_user", False),

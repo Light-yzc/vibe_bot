@@ -37,7 +37,7 @@ class ToolRegistry:
                 "type": "function",
                 "function": {
                     "name": "reply_group_message",
-                    "description": "Reply to the current QQ group. Use this when 未郁 decides the current message deserves a response. Prefer 1-3 short message bubbles. If you are replying to a specific current or buffered message, set reply_to_message_id. Prefer quote-reply over @ when a quote already makes the target clear. Use @ only when you want to explicitly pull someone in.",
+                    "description": "Reply to the current QQ group. Use this when 未郁 decides the current message deserves a response. Prefer 1-3 short message bubbles. Default to plain messages without quote-reply when context is already clear. Set reply_to_message_id only when the target would otherwise be ambiguous, when answering one buffered older message, or when quoting is necessary to keep context clear. Use @ only when you want to explicitly pull someone in.",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -56,7 +56,7 @@ class ToolRegistry:
                             },
                             "reply_to_message_id": {
                                 "type": "string",
-                                "description": "Optional QQ message id to quote-reply. Use this when answering the current trigger message or one specific buffered context message.",
+                                "description": "Optional QQ message id to quote-reply. Leave this empty by default. Use it only when you need to anchor the reply to a specific message because context would otherwise be unclear.",
                             },
                         },
                         "required": ["messages"],
