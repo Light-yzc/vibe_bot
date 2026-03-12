@@ -159,7 +159,11 @@ class QQRouter:
         runtime = self._runtime_for_group(group_id)
         now = time.time()
         runtime["observed_count"] = int(runtime.get("observed_count", 0)) + 1
-        is_at = f"[CQ:at,qq={bot_user_id}]" in raw_message if bot_user_id else False
+        at_ids = re.findall(r"\[CQ:at,qq=(\d+)[^\]]*\]", raw_message)
+        bot_id = str(bot_user_id) if bot_user_id else ""
+        is_at = bool(bot_id) and bot_id in at_ids
+        at_other_users = [at_id for at_id in at_ids if not bot_id or at_id != bot_id]
+        at_other_only = bool(at_other_users) and not is_at
         has_reply = bool(re.search(r"\[CQ:reply,id=\d+\]", raw_message))
         reply_targets_bot = bool((reply_context or {}).get("reply_targets_bot"))
         has_image = "[CQ:image," in raw_message
@@ -176,6 +180,22 @@ class QQRouter:
         contextual_engagement = recent_context and (direct_question or emotional_followup or contains_name or reply_targets_bot)
         short_contextual_followup = recent_context and len(cleaned) <= 12 and not looks_like_command
         relevant_message = direct_engagement or targeted_question or contextual_engagement or short_contextual_followup
+        if at_other_only and not (starts_with_prefix or contains_name or reply_targets_bot):
+            return (
+                False,
+                "at_other_user",
+                cleaned,
+                {
+                    "is_at": is_at,
+                    "at_other_only": True,
+                    "at_other_user_ids": at_other_users,
+                    "has_reply": has_reply,
+                    "reply_targets_bot": reply_targets_bot,
+                    "starts_with_prefix": starts_with_prefix,
+                    "contains_name": contains_name,
+                    "store_as_context": False,
+                },
+            )
         high_signal_hints = self._high_signal_state_hints(cleaned)
         duplicate_signal = self._track_duplicate_message(runtime, user_id, cleaned, now)
         periodic_self_audit = self._consume_periodic_audit(runtime)
@@ -204,6 +224,8 @@ class QQRouter:
 
         metadata = {
             "is_at": is_at,
+            "at_other_only": at_other_only,
+            "at_other_user_ids": at_other_users,
             "starts_with_prefix": starts_with_prefix,
             "contains_name": contains_name,
             "has_reply": has_reply,

@@ -205,6 +205,15 @@ class NapCatWebSocketAdapter:
         cleaned = self._strip_cq_codes(raw_message or "")
         return cleaned or "[引用了一条非文本消息]"
 
+    def _extract_at_mentions(self, raw_message: str):
+        mentions = []
+        for at_id in re.findall(r"\[CQ:at,qq=(\d+)[^\]]*\]", raw_message or ""):
+            if self.bot_user_id and str(at_id) == str(self.bot_user_id):
+                mentions.append("未郁")
+            else:
+                mentions.append(f"qq={at_id}")
+        return mentions
+
     def _extract_reply_context(self, event: dict):
         raw_message = event.get("raw_message") or ""
         reply_match = re.search(r"\[CQ:reply,id=(\d+)\]", raw_message)
@@ -241,9 +250,12 @@ class NapCatWebSocketAdapter:
         raw_message = event.get("raw_message") or ""
         parts = []
         image_urls = []
+        at_mentions = self._extract_at_mentions(raw_message)
 
         if reply_context:
             parts.append(str(reply_context.get("quoted_text") or f"引用消息 id={reply_context.get('reply_id', 'unknown')}"))
+        if at_mentions:
+            parts.append(f"消息中@了：{', '.join(at_mentions)}")
 
         image_matches = re.findall(r"\[CQ:image,([^\]]+)\]", raw_message)
         for image_raw in image_matches:
