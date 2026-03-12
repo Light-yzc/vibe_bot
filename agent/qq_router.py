@@ -128,7 +128,7 @@ class QQRouter:
         return any(token in text for token in keywords)
 
     def _addresses_second_person(self, text: str):
-        keywords = ["你", "你来", "你看", "你觉得", "你说", "你能", "你会", "给我", "帮我"]
+        keywords = ["你来", "你看", "你觉得", "你说", "你能", "你会", "你帮", "你去", "你要不", "给我", "帮我", "跟你说", "问你"]
         return any(token in text for token in keywords)
 
     def _looks_like_command(self, text: str):
@@ -176,9 +176,9 @@ class QQRouter:
         recent_context = now < runtime["recent_bot_context_until"]
         emotional_followup = self._is_emotional_followup(cleaned)
         direct_engagement = is_at or starts_with_prefix or contains_name or reply_targets_bot
-        targeted_question = direct_question and (is_at or contains_name or reply_targets_bot or asks_for_help or has_image or recent_context or addresses_second_person)
+        targeted_question = direct_question and (is_at or contains_name or reply_targets_bot or asks_for_help or has_image or recent_context)
         contextual_engagement = recent_context and (direct_question or emotional_followup or contains_name or reply_targets_bot)
-        short_contextual_followup = recent_context and len(cleaned) <= 12 and not looks_like_command
+        short_contextual_followup = recent_context and len(cleaned) <= 6 and not looks_like_command
         relevant_message = direct_engagement or targeted_question or contextual_engagement or short_contextual_followup
         if at_other_only and not (starts_with_prefix or contains_name or reply_targets_bot):
             return (
@@ -209,9 +209,9 @@ class QQRouter:
             trigger_reason = "named_question"
         elif has_image and direct_question:
             trigger_reason = "image_question"
-        elif addresses_second_person and direct_question:
+        elif addresses_second_person and direct_question and recent_context:
             trigger_reason = "second_person_question"
-        elif asks_for_help and direct_question:
+        elif asks_for_help and direct_question and (recent_context or contains_name):
             trigger_reason = "help_request"
         elif recent_context and direct_question:
             trigger_reason = "context_question"
@@ -273,7 +273,7 @@ class QQRouter:
         now = time.time()
         runtime["last_llm_at"] = now
         runtime["last_reply_at"] = now
-        runtime["recent_bot_context_until"] = now + 90
+        runtime["recent_bot_context_until"] = now + 60
         runtime["reply_count"] = int(runtime.get("reply_count", 0)) + 1
         normalized = " ".join((duplicate_text or "").split())
         if normalized:
