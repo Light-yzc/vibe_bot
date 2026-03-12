@@ -526,95 +526,102 @@ class CatgirlAgent:
             self._content_for_logging(user_text),
         )
 
-        while True:
-            response = self.client.chat(messages, tools=self.tool_registry.schemas, tool_choice="required")
-            message = response["choices"][0]["message"]
-            tool_calls = message.get("tool_calls") or []
+        messages_snapshot_len = len(messages)
+        try:
+            while True:
+                response = self.client.chat(messages, tools=self.tool_registry.schemas, tool_choice="required")
+                message = response["choices"][0]["message"]
+                tool_calls = message.get("tool_calls") or []
 
-            if not tool_calls:
-                answer = (message.get("content") or "").strip()
-                self._cleanup_temp_contexts(
-                    messages,
-                    [
-                        index
-                        for index in [
-                            passive_context_index,
-                            state_audit_context_index,
-                            relationship_context_index,
-                            reminder_context_index,
-                            periodic_audit_context_index,
-                            high_signal_context_index,
-                            duplicate_context_index,
-                        ]
-                        if index is not None
-                    ],
-                )
-                if answer:
-                    self.logger.info("=== inner_monologue ===")
-                    self.logger.info(answer)
-                    messages.append({"role": "assistant", "content": f"[internal_monologue] {answer}"})
-                self.logger.info("=== final_ignore ===")
-                return {"reply_messages": [], "mention_user": False}
-
-            assistant_message = {
-                "role": "assistant",
-                "content": message.get("content", ""),
-                "tool_calls": tool_calls,
-            }
-            messages.append(assistant_message)
-
-            final_action = None
-            for tool_call in tool_calls:
-                result = self.tool_registry.execute(tool_call)
-                if isinstance(result, dict) and result.get("_final_action") in {"reply_group_message", "ignore_group_message"}:
-                    final_action = result
-                    continue
-                messages.append(
-                    {
-                        "role": "tool",
-                        "tool_call_id": tool_call["id"],
-                        "content": json.dumps(result, ensure_ascii=False),
-                    }
-                )
-
-            if final_action is not None:
-                self._cleanup_temp_contexts(
-                    messages,
-                    [
-                        index
-                        for index in [
-                            passive_context_index,
-                            state_audit_context_index,
-                            relationship_context_index,
-                            reminder_context_index,
-                            periodic_audit_context_index,
-                            high_signal_context_index,
-                            duplicate_context_index,
-                        ]
-                        if index is not None
-                    ],
-                )
-                if final_action.get("_final_action") == "ignore_group_message":
-                    thought = (final_action.get("thought") or "").strip()
-                    if thought:
+                if not tool_calls:
+                    answer = (message.get("content") or "").strip()
+                    self._cleanup_temp_contexts(
+                        messages,
+                        [
+                            index
+                            for index in [
+                                passive_context_index,
+                                state_audit_context_index,
+                                relationship_context_index,
+                                reminder_context_index,
+                                periodic_audit_context_index,
+                                high_signal_context_index,
+                                duplicate_context_index,
+                            ]
+                            if index is not None
+                        ],
+                    )
+                    if answer:
                         self.logger.info("=== inner_monologue ===")
-                        self.logger.info(thought)
-                        messages.append({"role": "assistant", "content": f"[internal_monologue] {thought}"})
+                        self.logger.info(answer)
+                        messages.append({"role": "assistant", "content": f"[internal_monologue] {answer}"})
                     self.logger.info("=== final_ignore ===")
                     return {"reply_messages": [], "mention_user": False}
-                assistant_text = "\n\n".join(final_action.get("messages", []))
-                if assistant_text:
-                    messages.append({"role": "assistant", "content": assistant_text})
-                    self._persist_session_summary(session_key, str(user_id), str(group_id), messages, source_type="passive_reply")
-                self.logger.info("=== final_reply_tool ===")
-                self.logger.info(json.dumps(final_action, ensure_ascii=False))
-                reply_to_message_id = self._resolve_passive_reply_to_message_id(
-                    final_action.get("reply_to_message_id"),
-                    trigger_metadata,
-                )
-                return {
-                    "reply_messages": final_action.get("messages", []),
-                    "mention_user": final_action.get("mention_user", False),
-                    "mention_user_id": final_action.get("mention_user_id"),
-                    "reply_to_message_id": reply_to_message_id,
+
+                assistant_message = {
+                    "role": "assistant",
+                    "content": message.get("content", ""),
+                    "tool_calls": tool_calls,
                 }
+                messages.append(assistant_message)
+
+                final_action = None
+                for tool_call in tool_calls:
+                    result = self.tool_registry.execute(tool_call)
+                    if isinstance(result, dict) and result.get("_final_action") in {"reply_group_message", "ignore_group_message"}:
+                        final_action = result
+                        continue
+                    messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": tool_call["id"],
+                            "content": json.dumps(result, ensure_ascii=False),
+                        }
+                    )
+
+                if final_action is not None:
+                    self._cleanup_temp_contexts(
+                        messages,
+                        [
+                            index
+                            for index in [
+                                passive_context_index,
+                                state_audit_context_index,
+                                relationship_context_index,
+                                reminder_context_index,
+                                periodic_audit_context_index,
+                                high_signal_context_index,
+                                duplicate_context_index,
+                            ]
+                            if index is not None
+                        ],
+                    )
+                    if final_action.get("_final_action") == "ignore_group_message":
+                        thought = (final_action.get("thought") or "").strip()
+                        if thought:
+                            self.logger.info("=== inner_monologue ===")
+                            self.logger.info(thought)
+                            messages.append({"role": "assistant", "content": f"[internal_monologue] {thought}"})
+                        self.logger.info("=== final_ignore ===")
+                        return {"reply_messages": [], "mention_user": False}
+                    assistant_text = "\n\n".join(final_action.get("messages", []))
+                    if assistant_text:
+                        messages.append({"role": "assistant", "content": assistant_text})
+                        self._persist_session_summary(session_key, str(user_id), str(group_id), messages, source_type="passive_reply")
+                    self.logger.info("=== final_reply_tool ===")
+                    self.logger.info(json.dumps(final_action, ensure_ascii=False))
+                    reply_to_message_id = self._resolve_passive_reply_to_message_id(
+                        final_action.get("reply_to_message_id"),
+                        trigger_metadata,
+                    )
+                    return {
+                        "reply_messages": final_action.get("messages", []),
+                        "mention_user": final_action.get("mention_user", False),
+                        "mention_user_id": final_action.get("mention_user_id"),
+                        "reply_to_message_id": reply_to_message_id,
+                    }
+        except Exception:
+            del messages[messages_snapshot_len:]
+            self.logger.warning("llm_error_rollback session_id=%s rolled_back_to=%s", session_key, messages_snapshot_len)
+            raise
+
