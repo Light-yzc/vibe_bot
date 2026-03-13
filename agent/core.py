@@ -147,6 +147,23 @@ class CatgirlAgent:
         except Exception as exc:
             self.logger.warning("session_summary_persist_failed session_id=%s error=%s", session_key, exc)
 
+    @staticmethod
+    def _strip_image_urls_from_content(content):
+        if not isinstance(content, list):
+            return content
+        new_blocks = []
+        for block in content:
+            if not isinstance(block, dict):
+                new_blocks.append(block)
+                continue
+            if block.get("type") == "image_url":
+                new_blocks.append({"type": "text", "text": "[用户发送了一张图片]"})
+            else:
+                new_blocks.append(block)
+        text_parts = [b.get("text", "") for b in new_blocks if isinstance(b, dict) and b.get("type") == "text"]
+        merged = "\n".join(part for part in text_parts if part)
+        return merged or "[用户发送了一张图片]"
+
     def _cleanup_temp_contexts(self, messages, indices):
         for index in sorted(indices, reverse=True):
             if 0 <= index < len(messages):
@@ -366,6 +383,12 @@ class CatgirlAgent:
             user_text,
         )
 
+        current_user_msg_index = len(messages) - 1
+        for i in range(current_user_msg_index):
+            msg = messages[i]
+            if msg.get("role") == "user" and isinstance(msg.get("content"), list):
+                messages[i] = {**msg, "content": self._strip_image_urls_from_content(msg["content"])}
+
         while True:
             response = self.client.chat(messages, tools=self.tool_registry.schemas)
             message = response["choices"][0]["message"]
@@ -531,6 +554,12 @@ class CatgirlAgent:
             trigger_reason,
             self._content_for_logging(user_text),
         )
+
+        current_user_msg_index = len(messages) - 1
+        for i in range(current_user_msg_index):
+            msg = messages[i]
+            if msg.get("role") == "user" and isinstance(msg.get("content"), list):
+                messages[i] = {**msg, "content": self._strip_image_urls_from_content(msg["content"])}
 
         messages_snapshot_len = len(messages)
         try:
