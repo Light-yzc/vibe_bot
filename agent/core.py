@@ -58,6 +58,8 @@ except ImportError:
 
 
 class CatgirlAgent:
+    MAX_SESSION_MESSAGES = 24
+
     def __init__(self, client, skill_store, tool_registry, logger, memory_store=None):
         self.client = client
         self.skill_store = skill_store
@@ -170,6 +172,23 @@ class CatgirlAgent:
                 maybe_context = messages[index]
                 if maybe_context.get("role") == "system":
                     messages.pop(index)
+
+    def _trim_session_messages(self, messages, max_messages: int | None = None):
+        limit = max_messages or self.MAX_SESSION_MESSAGES
+        if len(messages) <= limit:
+            return
+
+        preserved = 1
+        if len(messages) > 1:
+            second = messages[1]
+            if second.get("role") == "system" and str(second.get("content", "")).startswith("Conversation continuity summary:"):
+                preserved = 2
+
+        tail_keep = max(limit - preserved, 0)
+        if tail_keep == 0:
+            del messages[preserved:]
+            return
+        messages[:] = messages[:preserved] + messages[-tail_keep:]
 
     def _needs_reply_tool_reminder(self, text):
         if isinstance(text, list):
@@ -437,6 +456,7 @@ class CatgirlAgent:
     ):
         session_key = session_id or f"group:{group_id}"
         messages = self._get_session_messages(session_key, user_id=str(user_id), group_id=str(group_id))
+        self._trim_session_messages(messages)
         self.tool_registry.set_user_context(user_id, user_name, group_id, group_name, card)
         relationship_state = self.tool_registry.state_store.get_relationship_state(group_id, user_id, user_name, card)
 
@@ -589,7 +609,7 @@ class CatgirlAgent:
                     if answer:
                         self.logger.info("=== inner_monologue ===")
                         self.logger.info(answer)
-                        messages.append({"role": "assistant", "content": f"[internal_monologue] {answer}"})
+                    self._trim_session_messages(messages)
                     self.logger.info("=== final_ignore ===")
                     return {"reply_messages": [], "mention_user": False}
 
@@ -636,12 +656,13 @@ class CatgirlAgent:
                         if thought:
                             self.logger.info("=== inner_monologue ===")
                             self.logger.info(thought)
-                            messages.append({"role": "assistant", "content": f"[internal_monologue] {thought}"})
+                        self._trim_session_messages(messages)
                         self.logger.info("=== final_ignore ===")
                         return {"reply_messages": [], "mention_user": False}
                     assistant_text = "\n\n".join(final_action.get("messages", []))
                     if assistant_text:
                         messages.append({"role": "assistant", "content": assistant_text})
+                        self._trim_session_messages(messages)
                         self._persist_session_summary(session_key, str(user_id), str(group_id), messages, source_type="passive_reply")
                     self.logger.info("=== final_reply_tool ===")
                     self.logger.info(json.dumps(final_action, ensure_ascii=False))
@@ -659,4 +680,3 @@ class CatgirlAgent:
             del messages[messages_snapshot_len:]
             self.logger.warning("llm_error_rollback session_id=%s rolled_back_to=%s", session_key, messages_snapshot_len)
             raise
-

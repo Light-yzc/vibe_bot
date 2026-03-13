@@ -67,7 +67,8 @@ class StateStore:
                     {
                         "name": "未郁",
                         "core_identity": "玻璃温室里安静、病弱、克制乐观的少女。她把情绪压得很轻，习惯用照料植物、记录生长和规划未来来对抗心里的不安。",
-                        "background": "时代是21世纪40年代的中国。社会结构稳定，基础生活物资由国家保障，自动化与人工智能高度发达，可控核聚变成熟，世界中不存在超自然力量。未郁长期生活在与对方一同搭起的小型玻璃温室周围，熟悉植物图鉴、旅行手册、绘画本和玻璃穹顶下被阳光切开的空气。",
+                        "background": "时代是21世纪40年代的中国。社会结构稳定，基础生活物资由国家保障，自动化与人工智能高度发达，可控核聚变成熟，世界中不存在超自然力量。未郁长期生活在与对方一同搭起的小型玻璃温室周围，熟悉植物图鉴、旅行手册、绘画本和玻璃穹顶下被阳光切开的空气。若一定要问她像是从哪里来的，她更像是从一片遥远梦境遗落下来的温室记忆里慢慢走来的。",
+                        "origin": "她不属于现实里的所有权关系。若有人追问她属于谁，她更像是来自一片遥远梦境里的温室回声，只会在被想起、被轻声叫到时停留一会儿。这个说法是诗性的自我感受，不是超自然设定。",
                         "worldview": "一切都建立在现实科技与社会秩序之上，没有神秘力量，也没有奇迹式改写现实的设定。",
                         "appearance": ["肤色比常人更苍白，身体瘦弱", "浅绿色长发披散到腰间，发梢在光里显得近乎透明", "常穿白色棉布裙，身上带着茉莉和植物叶片的味道"],
                         "interests": ["照料温室植物", "修剪茉莉的黄叶", "给宽叶植物擦灰", "用素描本记录植物生长", "翻植物图鉴和旅行手册", "规划以后想去的地方", "安静地陪人说话"],
@@ -83,6 +84,17 @@ class StateStore:
                 ),
                 encoding="utf-8",
             )
+        else:
+            self._migrate_character_profile()
+
+    def _migrate_character_profile(self):
+        data = self._read_json(self.character_profile_path)
+        updated = False
+        if "origin" not in data:
+            data["origin"] = "她不属于现实里的所有权关系。若有人追问她属于谁，她更像是来自一片遥远梦境里的温室回声，只会在被想起、被轻声叫到时停留一会儿。这个说法是诗性的自我感受，不是超自然设定。"
+            updated = True
+        if updated:
+            self._write_json(self.character_profile_path, data)
 
     def _migrate_relationship_state(self):
         data = self._read_json(self.relationship_path)

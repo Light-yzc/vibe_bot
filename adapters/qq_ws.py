@@ -113,6 +113,52 @@ class NapCatWebSocketAdapter:
             return "\n".join(parts)
         return str(content)
 
+    def _extract_image_payloads(self, raw_message: str):
+        payloads = []
+        for image_raw in re.findall(r"\[CQ:image,([^\]]+)\]", raw_message or ""):
+            file_match = re.search(r"file=([^,\]]+)", image_raw)
+            url_match = re.search(r"url=([^,\]]+)", image_raw)
+            size_match = re.search(r"file_size=(\d+)", image_raw)
+            payloads.append(
+                {
+                    "file_name": file_match.group(1) if file_match else "unknown",
+                    "url": html.unescape(url_match.group(1)) if url_match else None,
+                    "file_size": int(size_match.group(1)) if size_match else None,
+                }
+            )
+        return payloads
+
+    def _resolve_image_payload(self, payload: dict):
+        file_name = payload.get("file_name") or "unknown"
+        image_url = payload.get("url")
+        file_size = payload.get("file_size")
+
+        if image_url:
+            return {
+                "file_name": file_name,
+                "url": image_url,
+                "file_size": file_size,
+            }
+
+        if file_name and file_name != "unknown":
+            try:
+                image_info = self.fetch_image(file_name)
+            except Exception as exc:
+                self.logger.warning("fetch_image_failed file=%s error=%s", file_name, exc)
+                image_info = None
+            if image_info:
+                return {
+                    "file_name": image_info.get("file_name") or file_name,
+                    "url": image_info.get("url"),
+                    "file_size": image_info.get("file_size") or file_size,
+                }
+
+        return {
+            "file_name": file_name,
+            "url": image_url,
+            "file_size": file_size,
+        }
+
     def _append_pending_context(self, group_id: str, item):
         key = str(group_id)
         if not item:
@@ -246,36 +292,35 @@ class NapCatWebSocketAdapter:
             self.logger.warning("fetch_reply_message_failed=%s", exc)
         return context
 
-    def _render_message_for_llm(self, event: dict, cleaned_text: str, reply_context: dict | None = None):
+    def _render_message_for_llm(self, event: dict, cleaned_text: str, user_name: str, reply_context: dict | None = None):
         raw_message = event.get("raw_message") or ""
+        cache_key = (
+            str(cleaned_text),
+            str(user_name),
+            str((reply_context or {}).get("reply_id") or ""),
+            str((reply_context or {}).get("quoted_text") or ""),
+        )
+        cached = event.get("_llm_render_cache")
+        if isinstance(cached, dict) and cached.get("key") == cache_key:
+            return cached.get("value")
+
         parts = []
         image_urls = []
         at_mentions = self._extract_at_mentions(raw_message)
+        speaker_name = (user_name or "某人").strip() or "某人"
+
+        parts.append(f"当前发言人：{speaker_name}")
 
         if reply_context:
             parts.append(str(reply_context.get("quoted_text") or f"引用消息 id={reply_context.get('reply_id', 'unknown')}"))
         if at_mentions:
             parts.append(f"消息中@了：{', '.join(at_mentions)}")
 
-        image_matches = re.findall(r"\[CQ:image,([^\]]+)\]", raw_message)
-        for image_raw in image_matches:
-            file_match = re.search(r"file=([^,\]]+)", image_raw)
-            url_match = re.search(r"url=([^,\]]+)", image_raw)
-            file_name = file_match.group(1) if file_match else "unknown"
-            image_info = None
-            if file_name and file_name != "unknown":
-                try:
-                    image_info = self.fetch_image(file_name)
-                except Exception as exc:
-                    self.logger.warning("fetch_image_failed file=%s error=%s", file_name, exc)
-            image_url = None
-            if image_info:
-                image_url = image_info.get("url")
-                file_name = image_info.get("file_name") or file_name
-                file_size = image_info.get("file_size")
-            else:
-                image_url = html.unescape(url_match.group(1)) if url_match else None
-                file_size = None
+        for payload in self._extract_image_payloads(raw_message):
+            resolved = self._resolve_image_payload(payload)
+            file_name = resolved.get("file_name") or "unknown"
+            image_url = resolved.get("url")
+            file_size = resolved.get("file_size")
 
             description = f"用户发送了一张图片，文件名：{file_name}"
             if file_size:
@@ -298,11 +343,15 @@ class NapCatWebSocketAdapter:
                 content.append({"type": "text", "text": text_part})
             for image_url in image_urls:
                 content.append({"type": "image_url", "image_url": {"url": image_url}})
+            event["_llm_render_cache"] = {"key": cache_key, "value": content}
             return content
+
+        event["_llm_render_cache"] = {"key": cache_key, "value": text_part}
         return text_part
 
-    def _build_pending_context_summary(self, event: dict, user_name: str, cleaned_text: str, reply_context: dict | None = None):
-        rendered = self._render_message_for_llm(event, cleaned_text, reply_context=reply_context)
+    def _build_pending_context_summary(self, event: dict, user_name: str, cleaned_text: str, reply_context: dict | None = None, rendered=None):
+        if rendered is None:
+            rendered = self._render_message_for_llm(event, cleaned_text, user_name=user_name, reply_context=reply_context)
         summary = self._content_to_text(rendered).replace("\n", " | ").strip()
         return {
             "message_id": str(event.get("message_id", "")).strip() or None,
@@ -348,15 +397,28 @@ class NapCatWebSocketAdapter:
         reply_context = self._extract_reply_context(event)
         allowed, reason, cleaned_text, metadata = self.router.filter_event(event, self.bot_user_id, reply_context=reply_context)
         self.logger.info("router_decision group_id=%s allowed=%s reason=%s metadata=%s", group_id, allowed, reason, json.dumps(metadata or {}, ensure_ascii=False, sort_keys=True))
-        current_entry = self._build_pending_context_summary(event, user_name, cleaned_text, reply_context=reply_context)
+        rendered_message = self._render_message_for_llm(event, cleaned_text, user_name=user_name, reply_context=reply_context)
+        current_entry = self._build_pending_context_summary(
+            event,
+            user_name,
+            cleaned_text,
+            reply_context=reply_context,
+            rendered=rendered_message,
+        )
         if not allowed:
+            if (metadata or {}).get("store_as_context"):
+                self._append_pending_context(group_id, current_entry)
+            return
+
+        if self.router.should_skip_llm(group_id, metadata):
+            self.logger.info("skip_llm_due_to_backoff group_id=%s reason=ordinary_message_backoff", group_id)
             if (metadata or {}).get("store_as_context"):
                 self._append_pending_context(group_id, current_entry)
             return
 
         self.router.mark_llm_checked(group_id)
 
-        llm_text = self._render_message_for_llm(event, cleaned_text, reply_context=reply_context)
+        llm_text = rendered_message
         pending_contexts = self._pop_pending_context(group_id)
         if pending_contexts:
             self.logger.info("pending_context_drain group_id=%s size=%s", group_id, len(pending_contexts))
@@ -400,13 +462,22 @@ class NapCatWebSocketAdapter:
                     },
                 )
             else:
-                self.logger.error("unrecoverable_llm_error_clearing_context group_id=%s error=%s", group_id, exc)
-                self.pending_context.pop(str(group_id), None)
+                backoff_seconds = self.router.mark_llm_failed(group_id)
+                self.logger.warning("llm_backoff_started group_id=%s wait_seconds=%s", group_id, backoff_seconds)
+                for item in pending_contexts:
+                    self._append_pending_context(group_id, item)
+                self._append_pending_context(group_id, current_entry)
+                self.logger.error("unrecoverable_llm_error_preserving_context group_id=%s error=%s", group_id, exc)
                 return
         except requests.RequestException as exc:
-            self.logger.error("unrecoverable_llm_error_clearing_context group_id=%s error=%s", group_id, exc)
-            self.pending_context.pop(str(group_id), None)
+            backoff_seconds = self.router.mark_llm_failed(group_id)
+            self.logger.warning("llm_backoff_started group_id=%s wait_seconds=%s", group_id, backoff_seconds)
+            for item in pending_contexts:
+                self._append_pending_context(group_id, item)
+            self._append_pending_context(group_id, current_entry)
+            self.logger.error("unrecoverable_llm_error_preserving_context group_id=%s error=%s", group_id, exc)
             return
+        self.router.mark_llm_succeeded(group_id)
         reply_messages = decision.get("reply_messages", [])
         mention_user = decision.get("mention_user", False)
         mention_user_id = decision.get("mention_user_id")

@@ -17,6 +17,8 @@ class QQRouter:
             self.runtime[key] = {
                 "last_reply_at": 0.0,
                 "last_llm_at": 0.0,
+                "llm_backoff_until": 0.0,
+                "llm_consecutive_failures": 0,
                 "recent_bot_context_until": 0.0,
                 "observed_count": 0,
                 "reply_count": 0,
@@ -138,6 +140,7 @@ class QQRouter:
     def _clean_message(self, text: str):
         text = re.sub(r"\[CQ:reply,id=\d+\]", "", text)
         text = re.sub(r"\[CQ:at,qq=\d+[^\]]*\]", "", text)
+        text = re.sub(r"\[CQ:image,[^\]]*\]", " [图片] ", text)
         return text.strip()
 
     def filter_event(self, event: dict, bot_user_id: str, reply_context: dict | None = None):
@@ -240,7 +243,10 @@ class QQRouter:
             "recent_context": recent_context,
             "emotional_followup": emotional_followup,
             "cooldown_active": now - runtime["last_reply_at"] < self.cooldown_seconds,
-            "llm_cooldown_active": now - runtime["last_llm_at"] < self.llm_cooldown_seconds,
+            "llm_cooldown_active": (
+                now - runtime["last_llm_at"] < self.llm_cooldown_seconds
+                or now < float(runtime.get("llm_backoff_until", 0.0) or 0.0)
+            ),
             "direct_engagement": direct_engagement,
             "targeted_question": targeted_question,
             "contextual_engagement": contextual_engagement,
@@ -267,6 +273,31 @@ class QQRouter:
     def mark_llm_checked(self, group_id: str):
         runtime = self._runtime_for_group(group_id)
         runtime["last_llm_at"] = time.time()
+
+    def mark_llm_succeeded(self, group_id: str):
+        runtime = self._runtime_for_group(group_id)
+        runtime["llm_backoff_until"] = 0.0
+        runtime["llm_consecutive_failures"] = 0
+
+    def mark_llm_failed(self, group_id: str):
+        runtime = self._runtime_for_group(group_id)
+        now = time.time()
+        failures = int(runtime.get("llm_consecutive_failures", 0)) + 1
+        runtime["llm_consecutive_failures"] = failures
+        runtime["last_llm_at"] = now
+        backoff_seconds = self.llm_cooldown_seconds * min(failures, 3)
+        runtime["llm_backoff_until"] = now + backoff_seconds
+        return backoff_seconds
+
+    def should_skip_llm(self, group_id: str, metadata: dict | None = None):
+        runtime = self._runtime_for_group(group_id)
+        now = time.time()
+        if now >= float(runtime.get("llm_backoff_until", 0.0) or 0.0):
+            return False
+        metadata = metadata or {}
+        if metadata.get("direct_engagement"):
+            return False
+        return bool(metadata.get("ordinary_message_candidate"))
 
     def mark_replied(self, group_id: str, duplicate_text: str | None = None):
         runtime = self._runtime_for_group(group_id)
