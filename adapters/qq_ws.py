@@ -400,16 +400,12 @@ class NapCatWebSocketAdapter:
                     },
                 )
             else:
-                restore = pending_contexts + [current_entry]
-                for item in restore:
-                    self._append_pending_context(group_id, item)
-                self.logger.warning("recoverable_llm_error_preserved_context group_id=%s", group_id)
+                self.logger.error("unrecoverable_llm_error_clearing_context group_id=%s error=%s", group_id, exc)
+                self.pending_context.pop(str(group_id), None)
                 return
-        except requests.RequestException:
-            restore = pending_contexts + [current_entry]
-            for item in restore:
-                self._append_pending_context(group_id, item)
-            self.logger.warning("recoverable_llm_error_preserved_context group_id=%s", group_id)
+        except requests.RequestException as exc:
+            self.logger.error("unrecoverable_llm_error_clearing_context group_id=%s error=%s", group_id, exc)
+            self.pending_context.pop(str(group_id), None)
             return
         reply_messages = decision.get("reply_messages", [])
         mention_user = decision.get("mention_user", False)

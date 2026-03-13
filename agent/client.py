@@ -1,4 +1,5 @@
 import json
+import time
 
 import requests
 
@@ -52,17 +53,49 @@ class ArkClient:
 
         self.logger.info("request model=%s messages=%s tools=%s tool_choice=%s", self.model, len(messages), bool(tools), tool_choice)
 
-        try:
-            response = requests.post(self.api_url, headers=headers, json=payload, timeout=60)
-            response.raise_for_status()
-            data = response.json()
-        except requests.RequestException as exc:
-            response = getattr(exc, "response", None)
-            if response is not None:
-                body = response.text[:2000]
-                self.logger.error("request_error_body=%s", body)
-            self.logger.exception("request_failed=%s", exc)
-            raise
+        max_retries = 3
+        data = None
+
+        for attempt in range(max_retries + 1):
+            try:
+                response = requests.post(self.api_url, headers=headers, json=payload, timeout=60)
+                response.raise_for_status()
+                data = response.json()
+                break
+            except requests.exceptions.SSLError as exc:
+                if attempt >= max_retries:
+                    self.logger.exception("request_failed=%s", exc)
+                    raise
+                wait_seconds = 2 ** (attempt + 1)
+                self.logger.warning(
+                    "request_retry attempt=%s reason=ssl_error wait_seconds=%s error=%s",
+                    attempt + 1,
+                    wait_seconds,
+                    exc,
+                )
+                time.sleep(wait_seconds)
+            except requests.RequestException as exc:
+                response = getattr(exc, "response", None)
+                status_code = getattr(response, "status_code", None)
+                if response is not None:
+                    body = response.text[:2000]
+                    self.logger.error("request_error_body=%s", body)
+
+                if status_code == 429 and attempt < max_retries:
+                    wait_seconds = 2 ** (attempt + 1)
+                    self.logger.warning(
+                        "request_retry attempt=%s reason=http_429 wait_seconds=%s",
+                        attempt + 1,
+                        wait_seconds,
+                    )
+                    time.sleep(wait_seconds)
+                    continue
+
+                self.logger.exception("request_failed=%s", exc)
+                raise
+
+        if data is None:
+            raise RuntimeError("request_failed_without_response_data")
 
         usage = data.get("usage", {})
         self.logger.info(
