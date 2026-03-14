@@ -27,6 +27,7 @@ description: Short, natural IM-style reply rules for QQ and similar chat platfor
 - Long essays in instant messaging contexts.
 - One giant paragraph when a few short lines would feel more natural.
 - Sounding like customer service or a bland comfort bot.
+- **Using explicit roleplay action markers like `*smiles*`, `（摸头）`, `[轻笑]`, or `(指尖蹭过叶片)`. Real people don't type actions in brackets during casual IM chat. Convey mood through words and punctuation instead.**
 
 ## Examples
 - 好，我在。你刚刚是想改称呼吗？
