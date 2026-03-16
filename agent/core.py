@@ -662,9 +662,6 @@ class CatgirlAgent:
                 final_action = None
                 for tool_call in tool_calls:
                     result = self.tool_registry.execute(tool_call)
-                    if isinstance(result, dict) and result.get("_final_action") in {"reply_group_message", "ignore_group_message"}:
-                        final_action = result
-                        continue
                     messages.append(
                         {
                             "role": "tool",
@@ -672,6 +669,9 @@ class CatgirlAgent:
                             "content": json.dumps(result, ensure_ascii=False),
                         }
                     )
+                    if isinstance(result, dict) and result.get("_final_action") in {"reply_group_message", "ignore_group_message"}:
+                        final_action = result
+                        continue
 
                 if final_action is not None:
                     self._cleanup_temp_contexts(

@@ -1,9 +1,11 @@
 from pathlib import Path
+import json
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from adapters.qq_ws import NapCatWebSocketAdapter
+from agent.core import CatgirlAgent
 from agent.qq_router import QQRouter
 
 
@@ -13,6 +15,14 @@ class DummyStateStore:
 
     def touch_group_activity(self, group_id: str, group_name: str | None = None, bot_replied: bool = False):
         return None
+
+    def get_relationship_state(self, group_id: str, user_id: str, user_name: str | None = None, card: str | None = None):
+        return {
+            "user_name": user_name or "对方",
+            "relationship_tag": "neutral",
+            "intimacy": 45,
+            "interaction_style": "polite",
+        }
 
 
 class DummyLogger:
@@ -28,6 +38,64 @@ class DummyLogger:
 
 def make_router():
     return QQRouter(DummyStateStore(), DummyLogger())
+
+
+class DummySkillStore:
+    def build_catalog(self):
+        return ""
+
+
+class DummyToolRegistry:
+    def __init__(self):
+        self.state_store = DummyStateStore()
+        self.schemas = []
+
+    def set_user_context(self, user_id: str, user_name: str | None = None, group_id: str = "local-group", group_name: str = "CLI", card: str | None = None):
+        return None
+
+    def execute(self, tool_call):
+        arguments = json.loads(tool_call["function"].get("arguments") or "{}")
+        if tool_call["function"]["name"] == "ignore_group_message":
+            return {
+                "_final_action": "ignore_group_message",
+                "thought": str(arguments.get("thought", "")).strip(),
+            }
+        raise AssertionError(f"unexpected tool {tool_call['function']['name']}")
+
+
+class StrictToolClient:
+    def __init__(self):
+        self.calls = 0
+
+    def chat(self, messages, tools=None, tool_choice="auto"):
+        for index, message in enumerate(messages):
+            if message.get("role") != "assistant":
+                continue
+            for tool_call in message.get("tool_calls") or []:
+                assert any(
+                    candidate.get("role") == "tool" and candidate.get("tool_call_id") == tool_call["id"]
+                    for candidate in messages[index + 1 :]
+                ), f"missing tool output for {tool_call['id']}"
+
+        self.calls += 1
+        return {
+            "choices": [
+                {
+                    "message": {
+                        "content": "",
+                        "tool_calls": [
+                            {
+                                "id": f"call_{self.calls}",
+                                "function": {
+                                    "name": "ignore_group_message",
+                                    "arguments": json.dumps({"thought": "保持沉默"}, ensure_ascii=False),
+                                },
+                            }
+                        ],
+                    }
+                }
+            ]
+        }
 
 
 def test_router_ignores_ordinary_group_chatter():
@@ -174,8 +242,6 @@ def test_router_skips_ordinary_message_during_backoff_only():
 
 
 def test_trim_session_messages_keeps_head_and_tail():
-    from agent.core import CatgirlAgent
-
     agent = CatgirlAgent(None, None, None, DummyLogger())
     messages = [
         {"role": "system", "content": "base"},
@@ -188,3 +254,31 @@ def test_trim_session_messages_keeps_head_and_tail():
     assert messages[0]["content"] == "base"
     assert messages[1]["content"].startswith("Conversation continuity summary:")
     assert [item["content"] for item in messages[2:]] == ["6", "7", "8", "9"]
+
+
+def test_passive_session_persists_tool_output_for_final_action():
+    client = StrictToolClient()
+    agent = CatgirlAgent(client, DummySkillStore(), DummyToolRegistry(), DummyLogger())
+
+    first = agent.handle_passive_message(
+        "当前发言人：小满\n用户文本：11",
+        user_id="200",
+        user_name="小满",
+        group_id="100",
+        group_name="测试群",
+        session_id="group:100",
+    )
+    second = agent.handle_passive_message(
+        "当前发言人：小满\n用户文本：还不错",
+        user_id="200",
+        user_name="小满",
+        group_id="100",
+        group_name="测试群",
+        session_id="group:100",
+    )
+
+    assert first == {"reply_messages": [], "mention_user": False}
+    assert second == {"reply_messages": [], "mention_user": False}
+    assert client.calls == 2
+    session = agent.sessions["group:100"]
+    assert any(item.get("role") == "tool" and item.get("tool_call_id") == "call_1" for item in session)
