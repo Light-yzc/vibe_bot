@@ -7,9 +7,20 @@ import uuid
 import requests
 from websocket import WebSocketConnectionClosedException, create_connection
 
+from config import BOT_NAME
+
 
 class NapCatWebSocketAdapter:
-    def __init__(self, ws_url, token, logger, state_store, router, agent, multi_msg_delay: float = 0.6):
+    def __init__(
+        self,
+        ws_url,
+        token,
+        logger,
+        state_store,
+        router,
+        agent,
+        multi_msg_delay: float = 0.6,
+    ):
         self.ws_url = ws_url
         self.token = token
         self.logger = logger
@@ -55,7 +66,10 @@ class NapCatWebSocketAdapter:
         return self.call_api("get_group_info_ex", {"group_id": int(group_id)})
 
     def fetch_group_member_info(self, group_id: str, user_id: str):
-        return self.call_api("get_group_member_info", {"group_id": int(group_id), "user_id": int(user_id), "no_cache": False})
+        return self.call_api(
+            "get_group_member_info",
+            {"group_id": int(group_id), "user_id": int(user_id), "no_cache": False},
+        )
 
     def fetch_message(self, message_id: str):
         return self.call_api("get_msg", {"message_id": int(message_id)})
@@ -66,7 +80,9 @@ class NapCatWebSocketAdapter:
     def send_group_message(self, group_id: str, message: str):
         self.logger.info("=== qq_send ===")
         self.logger.info("group_id=%s message=%s", group_id, message)
-        return self.call_api("send_group_msg", {"group_id": int(group_id), "message": message})
+        return self.call_api(
+            "send_group_msg", {"group_id": int(group_id), "message": message}
+        )
 
     def _split_reply_messages(self, text: str):
         normalized = (text or "").replace("\r\n", "\n").strip()
@@ -144,7 +160,9 @@ class NapCatWebSocketAdapter:
             try:
                 image_info = self.fetch_image(file_name)
             except Exception as exc:
-                self.logger.warning("fetch_image_failed file=%s error=%s", file_name, exc)
+                self.logger.warning(
+                    "fetch_image_failed file=%s error=%s", file_name, exc
+                )
                 image_info = None
             if image_info:
                 return {
@@ -163,7 +181,11 @@ class NapCatWebSocketAdapter:
         key = str(group_id)
         if not item:
             return
-        summary = str(item.get("summary", "")).strip() if isinstance(item, dict) else str(item).strip()
+        summary = (
+            str(item.get("summary", "")).strip()
+            if isinstance(item, dict)
+            else str(item).strip()
+        )
         if not summary:
             return
         bucket = self.pending_context.setdefault(key, [])
@@ -177,12 +199,18 @@ class NapCatWebSocketAdapter:
             normalized = {"message_id": None, "user_name": "某人", "summary": summary}
         bucket.append(normalized)
         self.pending_context[key] = bucket[-6:]
-        self.logger.info("pending_context_push group_id=%s size=%s", key, len(self.pending_context[key]))
+        self.logger.info(
+            "pending_context_push group_id=%s size=%s",
+            key,
+            len(self.pending_context[key]),
+        )
 
     def _pop_pending_context(self, group_id: str):
         return self.pending_context.pop(str(group_id), [])
 
-    def _merge_pending_context(self, pending_contexts, current_content, current_message_id: str | None = None):
+    def _merge_pending_context(
+        self, pending_contexts, current_content, current_message_id: str | None = None
+    ):
         if not pending_contexts:
             return current_content
 
@@ -211,7 +239,9 @@ class NapCatWebSocketAdapter:
         reply_to_message_id: str | None = None,
     ):
         if isinstance(text_or_messages, list):
-            parts = [str(item).strip() for item in text_or_messages if str(item).strip()]
+            parts = [
+                str(item).strip() for item in text_or_messages if str(item).strip()
+            ]
         else:
             parts = self._split_reply_messages(str(text_or_messages))
         mention_target = None
@@ -239,7 +269,11 @@ class NapCatWebSocketAdapter:
         return (nickname or card or str(event.get("user_id", ""))), card
 
     def _extract_group_name(self, event: dict, group_info: dict | None = None):
-        return (group_info or {}).get("group_name") or event.get("group_name") or str(event.get("group_id", ""))
+        return (
+            (group_info or {}).get("group_name")
+            or event.get("group_name")
+            or str(event.get("group_id", ""))
+        )
 
     def _strip_cq_codes(self, text: str):
         text = re.sub(r"\[CQ:reply,id=\d+\]", "", text)
@@ -255,7 +289,7 @@ class NapCatWebSocketAdapter:
         mentions = []
         for at_id in re.findall(r"\[CQ:at,qq=(\d+)[^\]]*\]", raw_message or ""):
             if self.bot_user_id and str(at_id) == str(self.bot_user_id):
-                mentions.append("未郁")
+                mentions.append(BOT_NAME)
             else:
                 mentions.append(f"qq={at_id}")
         return mentions
@@ -282,17 +316,26 @@ class NapCatWebSocketAdapter:
             quoted = self._summarize_replied_message(reply_data.get("raw_message", ""))
             context.update(
                 {
-                    "reply_sender_id": str(sender_id) if sender_id is not None else None,
+                    "reply_sender_id": str(sender_id)
+                    if sender_id is not None
+                    else None,
                     "reply_sender_name": sender_name,
                     "quoted_text": f"引用消息（来自{sender_name}）：{quoted}",
-                    "reply_targets_bot": bool(self.bot_user_id) and str(sender_id) == str(self.bot_user_id),
+                    "reply_targets_bot": bool(self.bot_user_id)
+                    and str(sender_id) == str(self.bot_user_id),
                 }
             )
         except Exception as exc:
             self.logger.warning("fetch_reply_message_failed=%s", exc)
         return context
 
-    def _render_message_for_llm(self, event: dict, cleaned_text: str, user_name: str, reply_context: dict | None = None):
+    def _render_message_for_llm(
+        self,
+        event: dict,
+        cleaned_text: str,
+        user_name: str,
+        reply_context: dict | None = None,
+    ):
         raw_message = event.get("raw_message") or ""
         cache_key = (
             str(cleaned_text),
@@ -312,7 +355,12 @@ class NapCatWebSocketAdapter:
         parts.append(f"当前发言人：{speaker_name}")
 
         if reply_context:
-            parts.append(str(reply_context.get("quoted_text") or f"引用消息 id={reply_context.get('reply_id', 'unknown')}"))
+            parts.append(
+                str(
+                    reply_context.get("quoted_text")
+                    or f"引用消息 id={reply_context.get('reply_id', 'unknown')}"
+                )
+            )
         if at_mentions:
             parts.append(f"消息中@了：{', '.join(at_mentions)}")
 
@@ -349,9 +397,18 @@ class NapCatWebSocketAdapter:
         event["_llm_render_cache"] = {"key": cache_key, "value": text_part}
         return text_part
 
-    def _build_pending_context_summary(self, event: dict, user_name: str, cleaned_text: str, reply_context: dict | None = None, rendered=None):
+    def _build_pending_context_summary(
+        self,
+        event: dict,
+        user_name: str,
+        cleaned_text: str,
+        reply_context: dict | None = None,
+        rendered=None,
+    ):
         if rendered is None:
-            rendered = self._render_message_for_llm(event, cleaned_text, user_name=user_name, reply_context=reply_context)
+            rendered = self._render_message_for_llm(
+                event, cleaned_text, user_name=user_name, reply_context=reply_context
+            )
         summary = self._content_to_text(rendered).replace("\n", " | ").strip()
         return {
             "message_id": str(event.get("message_id", "")).strip() or None,
@@ -372,7 +429,10 @@ class NapCatWebSocketAdapter:
             except Exception as exc:
                 self.logger.warning("fetch_group_member_info_failed=%s", exc)
         known_group = self.state_store.get_group_state(group_id)
-        if not known_group.get("group_name") or known_group.get("group_name") == group_id:
+        if (
+            not known_group.get("group_name")
+            or known_group.get("group_name") == group_id
+        ):
             try:
                 group_info = self.fetch_group_info(group_id)
             except Exception as exc:
@@ -395,9 +455,19 @@ class NapCatWebSocketAdapter:
         )
 
         reply_context = self._extract_reply_context(event)
-        allowed, reason, cleaned_text, metadata = self.router.filter_event(event, self.bot_user_id, reply_context=reply_context)
-        self.logger.info("router_decision group_id=%s allowed=%s reason=%s metadata=%s", group_id, allowed, reason, json.dumps(metadata or {}, ensure_ascii=False, sort_keys=True))
-        rendered_message = self._render_message_for_llm(event, cleaned_text, user_name=user_name, reply_context=reply_context)
+        allowed, reason, cleaned_text, metadata = self.router.filter_event(
+            event, self.bot_user_id, reply_context=reply_context
+        )
+        self.logger.info(
+            "router_decision group_id=%s allowed=%s reason=%s metadata=%s",
+            group_id,
+            allowed,
+            reason,
+            json.dumps(metadata or {}, ensure_ascii=False, sort_keys=True),
+        )
+        rendered_message = self._render_message_for_llm(
+            event, cleaned_text, user_name=user_name, reply_context=reply_context
+        )
         current_entry = self._build_pending_context_summary(
             event,
             user_name,
@@ -411,7 +481,10 @@ class NapCatWebSocketAdapter:
             return
 
         if self.router.should_skip_llm(group_id, metadata):
-            self.logger.info("skip_llm_due_to_backoff group_id=%s reason=ordinary_message_backoff", group_id)
+            self.logger.info(
+                "skip_llm_due_to_backoff group_id=%s reason=ordinary_message_backoff",
+                group_id,
+            )
             if (metadata or {}).get("store_as_context"):
                 self._append_pending_context(group_id, current_entry)
             return
@@ -421,8 +494,14 @@ class NapCatWebSocketAdapter:
         llm_text = rendered_message
         pending_contexts = self._pop_pending_context(group_id)
         if pending_contexts:
-            self.logger.info("pending_context_drain group_id=%s size=%s", group_id, len(pending_contexts))
-            llm_text = self._merge_pending_context(pending_contexts, llm_text, current_entry.get("message_id"))
+            self.logger.info(
+                "pending_context_drain group_id=%s size=%s",
+                group_id,
+                len(pending_contexts),
+            )
+            llm_text = self._merge_pending_context(
+                pending_contexts, llm_text, current_entry.get("message_id")
+            )
 
         try:
             decision = self.agent.handle_passive_message(
@@ -437,13 +516,24 @@ class NapCatWebSocketAdapter:
                 trigger_metadata={
                     **(metadata or {}),
                     "current_message_id": current_entry.get("message_id"),
-                    "buffered_message_ids": [item.get("message_id") for item in pending_contexts if item.get("message_id")],
+                    "buffered_message_ids": [
+                        item.get("message_id")
+                        for item in pending_contexts
+                        if item.get("message_id")
+                    ],
                 },
             )
         except requests.HTTPError as exc:
-            should_retry_text_only = isinstance(llm_text, list) and exc.response is not None and exc.response.status_code == 400
+            should_retry_text_only = (
+                isinstance(llm_text, list)
+                and exc.response is not None
+                and exc.response.status_code == 400
+            )
             if should_retry_text_only:
-                self.logger.warning("multimodal_request_rejected_retrying_text_only group_id=%s", group_id)
+                self.logger.warning(
+                    "multimodal_request_rejected_retrying_text_only group_id=%s",
+                    group_id,
+                )
                 text_only = self._content_to_text(llm_text)
                 decision = self.agent.handle_passive_message(
                     text_only,
@@ -458,24 +548,44 @@ class NapCatWebSocketAdapter:
                         **(metadata or {}),
                         "multimodal_fallback": True,
                         "current_message_id": current_entry.get("message_id"),
-                        "buffered_message_ids": [item.get("message_id") for item in pending_contexts if item.get("message_id")],
+                        "buffered_message_ids": [
+                            item.get("message_id")
+                            for item in pending_contexts
+                            if item.get("message_id")
+                        ],
                     },
                 )
             else:
                 backoff_seconds = self.router.mark_llm_failed(group_id)
-                self.logger.warning("llm_backoff_started group_id=%s wait_seconds=%s", group_id, backoff_seconds)
+                self.logger.warning(
+                    "llm_backoff_started group_id=%s wait_seconds=%s",
+                    group_id,
+                    backoff_seconds,
+                )
                 for item in pending_contexts:
                     self._append_pending_context(group_id, item)
                 self._append_pending_context(group_id, current_entry)
-                self.logger.error("unrecoverable_llm_error_preserving_context group_id=%s error=%s", group_id, exc)
+                self.logger.error(
+                    "unrecoverable_llm_error_preserving_context group_id=%s error=%s",
+                    group_id,
+                    exc,
+                )
                 return
         except requests.RequestException as exc:
             backoff_seconds = self.router.mark_llm_failed(group_id)
-            self.logger.warning("llm_backoff_started group_id=%s wait_seconds=%s", group_id, backoff_seconds)
+            self.logger.warning(
+                "llm_backoff_started group_id=%s wait_seconds=%s",
+                group_id,
+                backoff_seconds,
+            )
             for item in pending_contexts:
                 self._append_pending_context(group_id, item)
             self._append_pending_context(group_id, current_entry)
-            self.logger.error("unrecoverable_llm_error_preserving_context group_id=%s error=%s", group_id, exc)
+            self.logger.error(
+                "unrecoverable_llm_error_preserving_context group_id=%s error=%s",
+                group_id,
+                exc,
+            )
             return
         self.router.mark_llm_succeeded(group_id)
         reply_messages = decision.get("reply_messages", [])
@@ -485,7 +595,9 @@ class NapCatWebSocketAdapter:
         if reply_messages:
             duplicate_text = None
             if (metadata or {}).get("duplicate_repeat_candidate"):
-                duplicate_text = str((metadata or {}).get("duplicate_text", "") or "").strip()
+                duplicate_text = str(
+                    (metadata or {}).get("duplicate_text", "") or ""
+                ).strip()
             self.send_group_reply(
                 group_id,
                 reply_messages,
@@ -508,7 +620,10 @@ class NapCatWebSocketAdapter:
                 if not raw:
                     continue
                 payload = json.loads(raw)
-                if payload.get("post_type") == "message" and payload.get("message_type") == "group":
+                if (
+                    payload.get("post_type") == "message"
+                    and payload.get("message_type") == "group"
+                ):
                     self._handle_group_message(payload)
             except WebSocketConnectionClosedException:
                 self.logger.warning("qq_connection_closed=true")

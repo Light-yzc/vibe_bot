@@ -1,9 +1,26 @@
 import re
 import time
 
+from config import BOT_ALIASES
+
+
+BOT_ALIAS_TOKENS = tuple(
+    dict.fromkeys(alias.strip().lower() for alias in BOT_ALIASES if alias.strip())
+)
+BOT_PREFIX_TOKENS = tuple(
+    token for alias in BOT_ALIAS_TOKENS for token in (alias, f"/{alias}")
+)
+
 
 class QQRouter:
-    def __init__(self, state_store, logger, cooldown_seconds: int = 45, llm_cooldown_seconds: int = 15, duplicate_reply_cooldown_seconds: int = 600):
+    def __init__(
+        self,
+        state_store,
+        logger,
+        cooldown_seconds: int = 45,
+        llm_cooldown_seconds: int = 15,
+        duplicate_reply_cooldown_seconds: int = 600,
+    ):
         self.state_store = state_store
         self.logger = logger
         self.cooldown_seconds = cooldown_seconds
@@ -44,14 +61,43 @@ class QQRouter:
         lowered = (text or "").lower()
         hints = []
 
-        affection_patterns = ["喜欢你", "爱你", "想你", "表白", "抱抱", "亲亲", "最喜欢你", "あなたが好き"]
+        affection_patterns = [
+            "喜欢你",
+            "爱你",
+            "想你",
+            "表白",
+            "抱抱",
+            "亲亲",
+            "最喜欢你",
+            "あなたが好き",
+        ]
         appreciation_patterns = ["谢谢", "多谢", "辛苦了", "你真好", "谢啦", "感谢"]
-        trusting_patterns = ["只敢和你说", "只能和你说", "不要告诉别人", "替我保密", "其实我想", "我想和你说个秘密"]
-        supportive_patterns = ["我支持你", "我站你这边", "我会陪你", "我帮你说话", "我信你"]
+        trusting_patterns = [
+            "只敢和你说",
+            "只能和你说",
+            "不要告诉别人",
+            "替我保密",
+            "其实我想",
+            "我想和你说个秘密",
+        ]
+        supportive_patterns = [
+            "我支持你",
+            "我站你这边",
+            "我会陪你",
+            "我帮你说话",
+            "我信你",
+        ]
         apology_patterns = ["对不起", "抱歉", "是我错了", "我错了", "不好意思"]
         dismissive_patterns = ["算了吧", "随便你", "懒得理你"]
         insulting_patterns = ["傻逼", "弱智", "烦死了", "滚", "有病", "你真恶心"]
-        naming_patterns = ["以后叫我", "改叫我", "你可以叫我", "别叫我", "称呼我", "怎么叫我"]
+        naming_patterns = [
+            "以后叫我",
+            "改叫我",
+            "你可以叫我",
+            "别叫我",
+            "称呼我",
+            "怎么叫我",
+        ]
         memory_patterns = ["记一下", "记住", "别忘了", "记着", "帮我记"]
 
         if any(pattern in lowered for pattern in affection_patterns):
@@ -75,12 +121,16 @@ class QQRouter:
 
         return hints
 
-    def _track_duplicate_message(self, runtime: dict, user_id: str, text: str, now: float):
+    def _track_duplicate_message(
+        self, runtime: dict, user_id: str, text: str, now: float
+    ):
         normalized = " ".join((text or "").split())
         history = runtime.setdefault("recent_messages", [])
         history.append({"time": now, "user_id": str(user_id), "text": normalized})
         runtime["recent_messages"] = [
-            item for item in history[-30:] if now - float(item.get("time", 0.0)) <= 300 and item.get("text")
+            item
+            for item in history[-30:]
+            if now - float(item.get("time", 0.0)) <= 300 and item.get("text")
         ]
 
         if not normalized:
@@ -91,10 +141,18 @@ class QQRouter:
                 "duplicate_text": "",
             }
 
-        matches = [item for item in runtime["recent_messages"] if item.get("text") == normalized]
-        distinct_users = {item.get("user_id") for item in matches if item.get("user_id")}
+        matches = [
+            item
+            for item in runtime["recent_messages"]
+            if item.get("text") == normalized
+        ]
+        distinct_users = {
+            item.get("user_id") for item in matches if item.get("user_id")
+        }
         raw_repeat_candidate = len(matches) >= 2 and len(normalized) <= 60
-        repeat_allowed = raw_repeat_candidate and self._duplicate_reply_allowed(runtime, normalized, now)
+        repeat_allowed = raw_repeat_candidate and self._duplicate_reply_allowed(
+            runtime, normalized, now
+        )
         return {
             "duplicate_message_count": len(matches),
             "duplicate_distinct_users": len(distinct_users),
@@ -108,7 +166,9 @@ class QQRouter:
         reply_count = int(runtime.get("reply_count", 0))
         last_observed = int(runtime.get("last_audit_observed_count", 0))
         last_reply = int(runtime.get("last_audit_reply_count", 0))
-        needs_audit = (observed_count - last_observed) >= 12 or (reply_count - last_reply) >= 5
+        needs_audit = (observed_count - last_observed) >= 12 or (
+            reply_count - last_reply
+        ) >= 5
         if needs_audit:
             runtime["last_audit_observed_count"] = observed_count
             runtime["last_audit_reply_count"] = reply_count
@@ -116,26 +176,98 @@ class QQRouter:
 
     def _contains_name(self, text: str):
         lowered = text.lower()
-        return any(token in lowered for token in ["未郁"])
+        return any(token in lowered for token in BOT_ALIAS_TOKENS)
+
+    def _mentions_persona_topics(self, text: str):
+        keywords = [
+            "医院",
+            "病房",
+            "天台",
+            "楼顶",
+            "钢栏",
+            "栏杆",
+            "橘子",
+            "消毒水",
+            "梦",
+            "昏迷",
+            "醒来",
+            "同学",
+            "坠落",
+            "坠楼",
+            "跳楼",
+            "rooftop",
+            "hospital",
+            "coma",
+            "orange",
+            "oranges",
+            "dream",
+        ]
+        lowered = text.lower()
+        return any(keyword in text or keyword in lowered for keyword in keywords)
 
     def _is_question(self, text: str):
-        return any(token in text for token in ["?", "？", "吗", "嘛", "呢", "怎么看", "怎么", "为什么"])
+        return any(
+            token in text
+            for token in ["?", "？", "吗", "嘛", "呢", "怎么看", "怎么", "为什么"]
+        )
 
     def _is_emotional_followup(self, text: str):
-        keywords = ["好感", "感动", "难过", "开心", "委屈", "喜欢", "想你", "在吗", "在不", "陪我"]
+        keywords = [
+            "好感",
+            "感动",
+            "难过",
+            "开心",
+            "委屈",
+            "喜欢",
+            "想你",
+            "在吗",
+            "在不",
+            "陪我",
+        ]
         return any(token in text for token in keywords)
 
     def _asks_for_help(self, text: str):
-        keywords = ["帮", "看看", "这是啥", "什么", "能不能", "可以吗", "你会", "你能", "解释", "复述", "回忆", "整理"]
+        keywords = [
+            "帮",
+            "看看",
+            "这是啥",
+            "什么",
+            "能不能",
+            "可以吗",
+            "你会",
+            "你能",
+            "解释",
+            "复述",
+            "回忆",
+            "整理",
+        ]
         return any(token in text for token in keywords)
 
     def _addresses_second_person(self, text: str):
-        keywords = ["你来", "你看", "你觉得", "你说", "你能", "你会", "你帮", "你去", "你要不", "给我", "帮我", "跟你说", "问你"]
+        keywords = [
+            "你来",
+            "你看",
+            "你觉得",
+            "你说",
+            "你能",
+            "你会",
+            "你帮",
+            "你去",
+            "你要不",
+            "给我",
+            "帮我",
+            "跟你说",
+            "问你",
+        ]
         return any(token in text for token in keywords)
 
     def _looks_like_command(self, text: str):
         stripped = text.strip().lower()
-        return stripped.startswith("/") or stripped.startswith(".") or stripped.startswith("!")
+        return (
+            stripped.startswith("/")
+            or stripped.startswith(".")
+            or stripped.startswith("!")
+        )
 
     def _clean_message(self, text: str):
         text = re.sub(r"\[CQ:reply,id=\d+\]", "", text)
@@ -143,7 +275,9 @@ class QQRouter:
         text = re.sub(r"\[CQ:image,[^\]]*\]", " [图片] ", text)
         return text.strip()
 
-    def filter_event(self, event: dict, bot_user_id: str, reply_context: dict | None = None):
+    def filter_event(
+        self, event: dict, bot_user_id: str, reply_context: dict | None = None
+    ):
         group_id = str(event.get("group_id", ""))
         if not group_id:
             return False, "missing_group_id", None, None
@@ -170,20 +304,41 @@ class QQRouter:
         has_reply = bool(re.search(r"\[CQ:reply,id=\d+\]", raw_message))
         reply_targets_bot = bool((reply_context or {}).get("reply_targets_bot"))
         has_image = "[CQ:image," in raw_message
-        starts_with_prefix = cleaned.lower().startswith(("未郁", "/未郁"))
+        starts_with_prefix = cleaned.lower().startswith(BOT_PREFIX_TOKENS)
         contains_name = self._contains_name(cleaned)
+        persona_topic_signal = self._mentions_persona_topics(cleaned)
         direct_question = self._is_question(cleaned)
         asks_for_help = self._asks_for_help(cleaned)
         addresses_second_person = self._addresses_second_person(cleaned)
         looks_like_command = self._looks_like_command(cleaned)
         recent_context = now < runtime["recent_bot_context_until"]
         emotional_followup = self._is_emotional_followup(cleaned)
-        direct_engagement = is_at or starts_with_prefix or contains_name or reply_targets_bot
-        targeted_question = direct_question and (is_at or contains_name or reply_targets_bot or asks_for_help or has_image or recent_context)
-        contextual_engagement = recent_context and (direct_question or emotional_followup or contains_name or reply_targets_bot)
-        short_contextual_followup = recent_context and len(cleaned) <= 6 and not looks_like_command
-        relevant_message = direct_engagement or targeted_question or contextual_engagement or short_contextual_followup
-        if at_other_only and not (starts_with_prefix or contains_name or reply_targets_bot):
+        direct_engagement = (
+            is_at or starts_with_prefix or contains_name or reply_targets_bot
+        )
+        targeted_question = direct_question and (
+            is_at
+            or contains_name
+            or reply_targets_bot
+            or asks_for_help
+            or has_image
+            or recent_context
+        )
+        contextual_engagement = recent_context and (
+            direct_question or emotional_followup or contains_name or reply_targets_bot
+        )
+        short_contextual_followup = (
+            recent_context and len(cleaned) <= 6 and not looks_like_command
+        )
+        relevant_message = (
+            direct_engagement
+            or targeted_question
+            or contextual_engagement
+            or short_contextual_followup
+        )
+        if at_other_only and not (
+            starts_with_prefix or contains_name or reply_targets_bot
+        ):
             return (
                 False,
                 "at_other_user",
@@ -222,6 +377,8 @@ class QQRouter:
             trigger_reason = "context_emotional_followup"
         elif short_contextual_followup:
             trigger_reason = "context_short_followup"
+        elif persona_topic_signal:
+            trigger_reason = "persona_topic"
         elif duplicate_signal["duplicate_repeat_candidate"]:
             trigger_reason = "duplicate_message"
 
@@ -251,12 +408,14 @@ class QQRouter:
             "targeted_question": targeted_question,
             "contextual_engagement": contextual_engagement,
             "short_contextual_followup": short_contextual_followup,
+            "persona_topic_signal": persona_topic_signal,
             "rule_relevant": relevant_message,
             "ordinary_message_candidate": not (
                 direct_engagement
                 or targeted_question
                 or contextual_engagement
                 or short_contextual_followup
+                or persona_topic_signal
                 or high_signal_hints
                 or duplicate_signal.get("duplicate_repeat_candidate")
             ),

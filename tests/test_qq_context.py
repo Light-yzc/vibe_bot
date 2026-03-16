@@ -13,10 +13,18 @@ class DummyStateStore:
     def is_group_allowed(self, group_id: str):
         return True
 
-    def touch_group_activity(self, group_id: str, group_name: str | None = None, bot_replied: bool = False):
+    def touch_group_activity(
+        self, group_id: str, group_name: str | None = None, bot_replied: bool = False
+    ):
         return None
 
-    def get_relationship_state(self, group_id: str, user_id: str, user_name: str | None = None, card: str | None = None):
+    def get_relationship_state(
+        self,
+        group_id: str,
+        user_id: str,
+        user_name: str | None = None,
+        card: str | None = None,
+    ):
         return {
             "user_name": user_name or "对方",
             "relationship_tag": "neutral",
@@ -50,7 +58,14 @@ class DummyToolRegistry:
         self.state_store = DummyStateStore()
         self.schemas = []
 
-    def set_user_context(self, user_id: str, user_name: str | None = None, group_id: str = "local-group", group_name: str = "CLI", card: str | None = None):
+    def set_user_context(
+        self,
+        user_id: str,
+        user_name: str | None = None,
+        group_id: str = "local-group",
+        group_name: str = "CLI",
+        card: str | None = None,
+    ):
         return None
 
     def execute(self, tool_call):
@@ -73,7 +88,8 @@ class StrictToolClient:
                 continue
             for tool_call in message.get("tool_calls") or []:
                 assert any(
-                    candidate.get("role") == "tool" and candidate.get("tool_call_id") == tool_call["id"]
+                    candidate.get("role") == "tool"
+                    and candidate.get("tool_call_id") == tool_call["id"]
                     for candidate in messages[index + 1 :]
                 ), f"missing tool output for {tool_call['id']}"
 
@@ -88,7 +104,9 @@ class StrictToolClient:
                                 "id": f"call_{self.calls}",
                                 "function": {
                                     "name": "ignore_group_message",
-                                    "arguments": json.dumps({"thought": "保持沉默"}, ensure_ascii=False),
+                                    "arguments": json.dumps(
+                                        {"thought": "保持沉默"}, ensure_ascii=False
+                                    ),
                                 },
                             }
                         ],
@@ -159,7 +177,7 @@ def test_router_allows_direct_name_trigger():
         {
             "group_id": "100",
             "user_id": "200",
-            "raw_message": "未郁，你在吗",
+            "raw_message": "Miki，你在吗",
         },
         bot_user_id="999",
     )
@@ -171,19 +189,21 @@ def test_router_allows_direct_name_trigger():
 
 
 def test_render_message_for_llm_keeps_current_speaker_name():
-    adapter = NapCatWebSocketAdapter("ws://example.invalid", "token", DummyLogger(), DummyStateStore(), None, None)
+    adapter = NapCatWebSocketAdapter(
+        "ws://example.invalid", "token", DummyLogger(), DummyStateStore(), None, None
+    )
     rendered = adapter._render_message_for_llm(
         {
             "user_id": "200",
-            "raw_message": "未郁，你在吗",
+            "raw_message": "Miki，你在吗",
         },
-        "未郁，你在吗",
+        "Miki，你在吗",
         user_name="小满",
     )
 
     assert isinstance(rendered, str)
     assert "当前发言人：小满" in rendered
-    assert "用户文本：未郁，你在吗" in rendered
+    assert "用户文本：Miki，你在吗" in rendered
 
 
 def test_router_image_message_does_not_become_question_from_url():
@@ -208,12 +228,21 @@ def test_router_image_message_does_not_become_question_from_url():
 def test_render_message_uses_embedded_image_url_without_fetching():
     class TrackingAdapter(NapCatWebSocketAdapter):
         def __init__(self):
-            super().__init__("ws://example.invalid", "token", DummyLogger(), DummyStateStore(), None, None)
+            super().__init__(
+                "ws://example.invalid",
+                "token",
+                DummyLogger(),
+                DummyStateStore(),
+                None,
+                None,
+            )
             self.fetch_calls = 0
 
         def fetch_image(self, file_name: str):
             self.fetch_calls += 1
-            raise AssertionError("fetch_image should not be called when CQ image already has url")
+            raise AssertionError(
+                "fetch_image should not be called when CQ image already has url"
+            )
 
     adapter = TrackingAdapter()
     rendered = adapter._render_message_for_llm(
@@ -237,8 +266,18 @@ def test_router_skips_ordinary_message_during_backoff_only():
     backoff_seconds = router.mark_llm_failed("100")
 
     assert backoff_seconds > 0
-    assert router.should_skip_llm("100", {"ordinary_message_candidate": True, "direct_engagement": False}) is True
-    assert router.should_skip_llm("100", {"ordinary_message_candidate": True, "direct_engagement": True}) is False
+    assert (
+        router.should_skip_llm(
+            "100", {"ordinary_message_candidate": True, "direct_engagement": False}
+        )
+        is True
+    )
+    assert (
+        router.should_skip_llm(
+            "100", {"ordinary_message_candidate": True, "direct_engagement": True}
+        )
+        is False
+    )
 
 
 def test_trim_session_messages_keeps_head_and_tail():
@@ -281,4 +320,7 @@ def test_passive_session_persists_tool_output_for_final_action():
     assert second == {"reply_messages": [], "mention_user": False}
     assert client.calls == 2
     session = agent.sessions["group:100"]
-    assert any(item.get("role") == "tool" and item.get("tool_call_id") == "call_1" for item in session)
+    assert any(
+        item.get("role") == "tool" and item.get("tool_call_id") == "call_1"
+        for item in session
+    )

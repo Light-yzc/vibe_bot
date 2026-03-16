@@ -30,12 +30,23 @@ def validate_runtime(require_qq: bool = False) -> None:
     if require_qq and not QQ_WS_TOKEN:
         missing.append("QQ_WS_TOKEN")
     if missing:
-        raise RuntimeError(f"Missing required environment variables: {', '.join(missing)}")
+        raise RuntimeError(
+            f"Missing required environment variables: {', '.join(missing)}"
+        )
 
-API_URL = os.getenv("ARK_API_URL", "https://ark.cn-beijing.volces.com/api/coding/v3/chat/completions")
+
+API_URL = os.getenv(
+    "ARK_API_URL", "https://ark.cn-beijing.volces.com/api/coding/v3/chat/completions"
+)
 API_KEY = _env_str("ARK_API_KEY")
 MODEL = "doubao-seed-2.0-pro"
 DEBUG = _env_flag("CATGIRL_DEBUG", True)
+BOT_NAME = _env_str("BOT_NAME", "Miki")
+BOT_ALIASES = tuple(
+    alias.strip()
+    for alias in _env_str("BOT_ALIASES", f"{BOT_NAME},miki").split(",")
+    if alias.strip()
+)
 DEFAULT_USER_ID = _env_str("CATGIRL_USER_ID", "local-user")
 DEFAULT_USER_NAME = _env_str("CATGIRL_USER_NAME", "对方")
 QQ_WS_URL = _env_str("QQ_WS_URL", "ws://127.0.0.1:3001")

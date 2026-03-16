@@ -2,6 +2,8 @@ import json
 import ast
 from datetime import datetime
 
+from config import BOT_NAME
+
 
 class ToolRegistry:
     def __init__(self, skill_store, state_store, logger):
@@ -37,7 +39,7 @@ class ToolRegistry:
                 "type": "function",
                 "function": {
                     "name": "reply_group_message",
-                    "description": "Reply to the current QQ group. Use this when 未郁 decides the current message deserves a response. If the message directly engages 未郁, asks her something, greets her, welcomes her, reacts to her last message, or offers an obvious social opening, prefer replying over silence. Prefer 1-3 short message bubbles. Default to plain messages without quote-reply when context is already clear. Set reply_to_message_id only when the target would otherwise be ambiguous, when answering one buffered older message, or when quoting is necessary to keep context clear. Use @ only when you want to explicitly pull someone in.",
+                    "description": f"Reply to the current QQ group. Use this when {BOT_NAME} decides the current message deserves a response. If the message directly engages {BOT_NAME}, asks her something, greets her, welcomes her, reacts to her last message, or offers an obvious social opening, prefer replying over silence. Prefer 1-3 short message bubbles. Default to plain messages without quote-reply when context is already clear. Set reply_to_message_id only when the target would otherwise be ambiguous, when answering one buffered older message, or when quoting is necessary to keep context clear. Use @ only when you want to explicitly pull someone in.",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -112,7 +114,10 @@ class ToolRegistry:
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "operation": {"type": "string", "enum": ["set", "add", "remove"]},
+                            "operation": {
+                                "type": "string",
+                                "enum": ["set", "add", "remove"],
+                            },
                             "field": {"type": "string"},
                             "value": {
                                 "description": "Required for set and add. For remove, pass the list item to delete or omit to remove a scalar field."
@@ -127,7 +132,7 @@ class ToolRegistry:
                 "type": "function",
                 "function": {
                     "name": "get_persona_state",
-                    "description": "Read 未郁's current persona state.",
+                    "description": f"Read {BOT_NAME}'s current persona state.",
                     "parameters": {"type": "object", "properties": {}, "required": []},
                 },
             },
@@ -168,15 +173,15 @@ class ToolRegistry:
                                     "dismissive",
                                     "provocative",
                                     "insulting",
-                                    "hostile"
-                                ]
+                                    "hostile",
+                                ],
                             },
                             "reason": {
                                 "type": "string",
-                                "description": "Short explanation tied to the current message, such as what the user said or did."
-                            }
+                                "description": "Short explanation tied to the current message, such as what the user said or did.",
+                            },
                         },
-                        "required": ["event_type", "reason"]
+                        "required": ["event_type", "reason"],
                     },
                 },
             },
@@ -184,7 +189,7 @@ class ToolRegistry:
                 "type": "function",
                 "function": {
                     "name": "get_relationship_state",
-                    "description": "Read the current relationship state between 未郁 and the current user in the current group.",
+                    "description": f"Read the current relationship state between {BOT_NAME} and the current user in the current group.",
                     "parameters": {"type": "object", "properties": {}, "required": []},
                 },
             },
@@ -286,7 +291,12 @@ class ToolRegistry:
             try:
                 arguments = ast.literal_eval(raw_arguments)
             except Exception as exc:
-                self.logger.error("tool_argument_parse_failed tool=%s raw=%s error=%s", name, raw_arguments, exc)
+                self.logger.error(
+                    "tool_argument_parse_failed tool=%s raw=%s error=%s",
+                    name,
+                    raw_arguments,
+                    exc,
+                )
                 raise
         self.logger.info(
             "tool_call id=%s name=%s args=%s",
@@ -302,20 +312,30 @@ class ToolRegistry:
                 "thought": thought,
             }
         elif name == "reply_group_message":
-            messages = [str(item).strip() for item in arguments.get("messages", []) if str(item).strip()]
+            messages = [
+                str(item).strip()
+                for item in arguments.get("messages", [])
+                if str(item).strip()
+            ]
             mention_user_id = arguments.get("mention_user_id")
             reply_to_message_id = arguments.get("reply_to_message_id")
             result = {
                 "_final_action": "reply_group_message",
                 "messages": messages,
                 "mention_user": bool(arguments.get("mention_user", False)),
-                "mention_user_id": str(mention_user_id).strip() if mention_user_id is not None and str(mention_user_id).strip() else None,
-                "reply_to_message_id": str(reply_to_message_id).strip() if reply_to_message_id is not None and str(reply_to_message_id).strip() else None,
+                "mention_user_id": str(mention_user_id).strip()
+                if mention_user_id is not None and str(mention_user_id).strip()
+                else None,
+                "reply_to_message_id": str(reply_to_message_id).strip()
+                if reply_to_message_id is not None and str(reply_to_message_id).strip()
+                else None,
             }
         elif name == "list_skill_sections":
             result = self.skill_store.list_skill_sections(arguments["skill_id"])
         elif name == "load_skill_section":
-            result = self.skill_store.load_skill_section(arguments["skill_id"], arguments.get("section_names"))
+            result = self.skill_store.load_skill_section(
+                arguments["skill_id"], arguments.get("section_names")
+            )
         elif name == "get_character_profile":
             result = self.state_store.get_character_profile()
         elif name == "mutate_character_profile":
@@ -328,7 +348,9 @@ class ToolRegistry:
         elif name == "get_persona_state":
             result = self.state_store.get_persona_state()
         elif name == "update_persona_state":
-            result = self.state_store.update_persona_state(arguments["field"], arguments["value"], arguments["reason"])
+            result = self.state_store.update_persona_state(
+                arguments["field"], arguments["value"], arguments["reason"]
+            )
         elif name == "get_relationship_state":
             result = self.state_store.get_relationship_state(
                 self.user_context["group_id"],
@@ -363,7 +385,9 @@ class ToolRegistry:
                 arguments["importance"],
             )
         elif name == "list_recent_events":
-            result = self.state_store.list_recent_events(self.user_context["group_id"], arguments.get("limit", 5))
+            result = self.state_store.list_recent_events(
+                self.user_context["group_id"], arguments.get("limit", 5)
+            )
         elif name == "get_time":
             result = {
                 "city": arguments.get("city", "local"),

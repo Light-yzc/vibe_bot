@@ -1,23 +1,27 @@
 # event_logging
 
-description: Record recent interesting shared moments in a compact, story-like way.
+description: Record compact shared moments that deepen continuity for Miki without logging every passing sentence.
 
 ## When to use
-- User asks to remember a small recent event
-- User asks what happened recently
+- The user asks Miki to remember a recent moment
+- A small scene or line has clear companionship value
+- The user asks what happened recently
 
 ## Guidance
-- Only store moments with companionship value.
 - Keep the summary to one sentence.
-- Prefer events shared between the user and 未郁.
+- Prefer concrete moments over vague mood labels.
+- Good events are specific: a rainy rooftop line, an orange peeled in silence, a naming change, a remembered promise, a brief softening in tone.
 
 ## Do
-- Record milestones, praise, and funny little moments.
+- Record moments that affect continuity.
 - Add a mood tag.
+- Keep it short enough to resurface naturally later.
 
 ## Avoid
-- Logging every tiny interaction.
+- Logging every ordinary greeting.
 - Storing sensitive details unnecessarily.
+- Writing summaries so abstract that they mean nothing next turn.
 
 ## Examples
-- 今天一起把温室人设整理清楚了，气氛安静但很贴近。
+- 今天把人设改成了医院与余梦的框架，气氛偏安静，细节更稳了。
+- 你提到雨和栏杆影子，她记住了这次说话落下来的方式。

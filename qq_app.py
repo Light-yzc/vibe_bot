@@ -4,7 +4,22 @@ from agent.logger import setup_logger
 from agent.qq_router import QQRouter
 from agent.skills import SkillStore
 from agent.state import StateStore
-from config import API_KEY, API_URL, DATA_DIR, DEBUG, LOG_DIR, MODEL, QQ_LLM_COOLDOWN_SECONDS, QQ_MULTI_MSG_DELAY_SECONDS, QQ_REPLY_COOLDOWN_SECONDS, QQ_WS_TOKEN, QQ_WS_URL, SKILLS_DIR, validate_runtime
+from config import (
+    API_KEY,
+    API_URL,
+    BOT_NAME,
+    DATA_DIR,
+    DEBUG,
+    LOG_DIR,
+    MODEL,
+    QQ_LLM_COOLDOWN_SECONDS,
+    QQ_MULTI_MSG_DELAY_SECONDS,
+    QQ_REPLY_COOLDOWN_SECONDS,
+    QQ_WS_TOKEN,
+    QQ_WS_URL,
+    SKILLS_DIR,
+    validate_runtime,
+)
 from tools.registry import ToolRegistry
 from adapters.qq_ws import NapCatWebSocketAdapter
 
@@ -23,9 +38,17 @@ def main():
         cooldown_seconds=QQ_REPLY_COOLDOWN_SECONDS,
         llm_cooldown_seconds=QQ_LLM_COOLDOWN_SECONDS,
     )
-    adapter = NapCatWebSocketAdapter(QQ_WS_URL, QQ_WS_TOKEN, logger, state_store, router, agent, multi_msg_delay=QQ_MULTI_MSG_DELAY_SECONDS)
+    adapter = NapCatWebSocketAdapter(
+        QQ_WS_URL,
+        QQ_WS_TOKEN,
+        logger,
+        state_store,
+        router,
+        agent,
+        multi_msg_delay=QQ_MULTI_MSG_DELAY_SECONDS,
+    )
 
-    print("未郁 QQ adapter is running...")
+    print(f"{BOT_NAME} QQ adapter is running...")
     adapter.serve_forever()
 
 
